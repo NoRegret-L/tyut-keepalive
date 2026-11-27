@@ -1,0 +1,67 @@
+name: Dependency governance
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  graph-and-notices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Collect locked four-target graphs and npm inventory
+        run: python scripts/dependency_inventory.py --output "$RUNNER_TEMP/dependency-evidence"
+      - name: Install pinned cargo-about
+        run: cargo install cargo-about --version 0.9.3 --locked --features cli
+      - name: Generate third-party notice candidate (strict harvesting)
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/dependency-evidence"
+          scratch="$RUNNER_TEMP/notice-checkout"
+          mkdir "$scratch"
+          git archive HEAD | tar -x -C "$scratch"
+          python scripts/prepare_notice_inventory.py --checkout "$scratch"
+          cargo about generate --locked --fail --manifest-path "$scratch/src-tauri/Cargo.toml" --config "$scratch/src-tauri/about.toml" --output-file "$output/THIRD-PARTY-RUST-REVIEW.txt" "$scratch/src-tauri/about.hbs" 2>&1 | tee "$output/cargo-about.log"
+          test -s "$output/THIRD-PARTY-RUST-REVIEW.txt"
+          cmp src-tauri/Cargo.lock "$scratch/src-tauri/Cargo.lock"
+      - name: Verify production manifests and lockfiles unchanged
+        if: always()
+        run: git diff --exit-code -- src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
+      - name: Upload graph and notice review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-governance-evidence
+          path: ${{ runner.temp }}/dependency-evidence/
+          if-no-files-found: error
+  license-policy-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.22.1 --locked
+      - name: Evaluate provisional SPDX policy (unapproved terms fail)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/license-policy"
+          cargo deny --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml --locked check licenses 2>&1 | tee "$RUNNER_TEMP/license-policy/cargo-deny.log"
+      - name: Verify production manifests and lockfiles unchanged
+        if: always()
+        run: git diff --exit-code -- src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
+      - name: Preserve SPDX policy evidence even on rejection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-policy-review
+          path: ${{ runner.temp }}/license-policy/
+          if-no-files-found: warn

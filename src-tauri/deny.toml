@@ -1,0 +1,9 @@
+# Preliminary review baseline, NOT a maintainer-approved distribution policy.
+# Unknown licenses and the unlicensed application itself must remain visible.
+[graph]
+targets = ["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]
+
+[licenses]
+allow = ["MIT","Apache-2.0","BSD-2-Clause","BSD-3-Clause","ISC","0BSD","Zlib","MIT-0","BSL-1.0","Unlicense","CC0-1.0"]
+unused-allowed-license = "allow"
+# No private ignore, package exceptions, or advisory suppressions.
