@@ -1,0 +1,18 @@
+name: Development CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'develop/v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-latest]
+    uses: ./.github/workflows/platform-checks.yml
+    with:
+      os: ${{ matrix.os }}

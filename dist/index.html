@@ -1,36 +1,161 @@
 <!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TYUT 校园网保活</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="app">
-      <h1>TYUT 校园网保活</h1>
-      <section class="card" aria-live="polite">
-        <p><span class="key">状态</span><span id="state">加载中</span></p>
-        <p><span class="key">账号</span><span id="account">-</span></p>
-        <p><span class="key">最近检查</span><span id="lastCheck">-</span></p>
-        <p><span class="key">最近登录</span><span id="lastLogin">-</span></p>
-        <p class="message" id="message">-</p>
+<html lang="zh-CN" data-theme="system">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TYUT 校园网保活</title>
+  <link rel="icon" type="image/png" href="./app-icon.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <img class="brand-icon app-brand-image" src="./app-icon.png" alt="" width="40" height="40" />
+        <div><h1>TYUT Keepalive</h1><p>校园网络连接助手</p></div>
+      </div>
+      <button class="quiet" id="hide" type="button" disabled>隐藏到后台</button>
+    </header>
+    <nav class="navigation" aria-label="主导航">
+      <button data-page="overview" aria-current="page" type="button">概览</button>
+      <button data-page="logs" type="button">运行记录</button>
+      <button data-page="settings" type="button">设置</button>
+      <button data-page="about" type="button">关于</button>
+    </nav>
+    <main id="mainContent">
+      <section id="page-overview" aria-labelledby="overviewTitle">
+        <div class="section-heading"><h2 id="overviewTitle">连接概览</h2><span class="muted">实时状态</span></div>
+        <article class="card hero" id="connectionCard" data-tone="neutral">
+          <div class="status-head">
+            <div class="signal-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8 16a6 6 0 0 1 8 0" /><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" /></svg>
+            </div>
+            <div class="status-text" role="status" aria-live="polite">
+              <span class="eyebrow">校园网状态</span>
+              <h3 id="state">正在初始化</h3>
+              <p id="message">正在等待后台服务</p>
+            </div>
+            <span class="status-indicator" aria-hidden="true"></span>
+          </div>
+          <dl class="account-line"><dt>登录账号</dt><dd id="account">—</dd></dl>
+        </article>
+        <div class="countdown-grid">
+          <article class="card countdown-dial" id="checkDial" data-active="false">
+            <h3>下次网络检测</h3>
+            <div class="dial-face">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dial-track" cx="60" cy="60" r="51" fill="none" stroke-width="9" />
+                <circle class="dial-progress" id="checkRing" cx="60" cy="60" r="51" fill="none" stroke-width="9" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 60 60)" />
+              </svg>
+              <div class="dial-center"><strong id="checkTime">—</strong><span class="muted" id="checkHint">待机</span></div>
+            </div>
+          </article>
+          <article class="card countdown-dial" id="retryDial" data-active="false">
+            <h3>断线重试</h3>
+            <div class="dial-face">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dial-track" cx="60" cy="60" r="51" fill="none" stroke-width="9" />
+                <circle class="dial-progress" id="retryRing" cx="60" cy="60" r="51" fill="none" stroke-width="9" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 60 60)" />
+              </svg>
+              <div class="dial-center"><strong id="retryTime">—</strong><span class="muted" id="retryHint">待机</span></div>
+            </div>
+          </article>
+        </div>
+        <div class="metrics">
+          <article class="card metric"><h3>最近网络检查</h3><p id="lastCheck">—</p><span class="muted">后台实际检测时间</span></article>
+          <article class="card metric"><h3>最近认证成功</h3><p id="lastLogin">—</p><span class="muted">最近成功认证记录</span></article>
+        </div>
+        <div class="metrics">
+          <article class="card metric"><h3>本地日期内认证确认</h3><p id="authCount">—</p><span class="muted">认证接口确认成功或已在线</span></article>
+          <article class="card metric"><h3>本地日期内观测中断</h3><p id="outageCount">—</p><span class="muted">已在线到检测失败的转换</span></article>
+          <article class="card metric"><h3>本次观测在线时长</h3><p id="onlineDuration">—</p><span class="muted">截至最近刷新，非学校会话时长</span></article>
+          <article class="card metric"><h3>统计日期</h3><p id="statsDate">—</p><span id="storageStatus" class="muted">等待后台记录</span></article>
+        </div>
+        <div class="actions">
+          <button id="reconnect" class="primary" type="button" disabled>立即重连</button>
+          <button id="pauseToggle" type="button" disabled>暂停保活</button>
+          <button id="setup" type="button">连接设置</button>
+        </div>
+        <p class="footnote">暂停仅影响本次运行，不主动注销网络；隐藏窗口不会停止后台服务。休眠或网络变化后先重新检查，暂停状态不会被自动解除。</p>
       </section>
-      <section class="actions">
-        <button id="setup">设置凭证</button>
-        <button id="reconnect">立即重连</button>
-        <button id="reset">重置凭据</button>
-        <button id="autostart">开机自启：检查中</button>
-        <button id="hide">隐藏到后台</button>
-        <button id="quit" class="danger">彻底退出</button>
+      <section id="page-logs" aria-labelledby="logsTitle" hidden>
+        <div class="section-heading"><h2 id="logsTitle">运行记录</h2><button id="refreshHistory" class="quiet" type="button">刷新记录</button></div>
+        <div class="card">
+          <p class="muted">显示最近 200 条本地持久化状态与认证事件。日志轮转保留有限历史，不包含账号或密码。</p>
+          <label class="field">筛选状态
+            <select id="logFilter"><option value="all">全部</option><option value="success">在线</option><option value="warning">等待与异常</option><option value="danger">错误</option><option value="neutral">其他</option><option value="active">检查与认证</option></select>
+          </label>
+          <label class="field">事件类型
+            <select id="logKind"><option value="all">全部事件</option><option value="auth-confirmed">认证确认</option><option value="connection-lost">连接中断</option><option value="connection-restored">连接恢复</option><option value="network-changed">网络变化</option><option value="system-suspended">系统休眠</option><option value="system-resumed">系统唤醒</option><option value="invalid-credentials">密码错误</option><option value="credential-error">凭据存储异常</option><option value="paused">暂停保活</option></select>
+          </label>
+          <label class="field">搜索运行记录<input id="logSearch" type="search" placeholder="输入事件名称或日期" /></label>
+          <div class="actions"><p id="logCount" class="muted" role="status" aria-live="polite">尚未读取记录</p><button id="resetLogFilters" class="quiet" type="button">重置筛选</button></div>
+          <p id="historyEmpty" class="empty">暂无状态事件</p>
+          <ol id="historyList" class="history-list" aria-label="最近状态事件"></ol>
+        </div>
+        <article class="card settings-card">
+          <h3>脱敏诊断报告</h3>
+          <p class="muted">仅整理当前状态、统计及最近事件；不包含账号、密码、IP、MAC、原始错误或本机路径，不发送到网络。时间戳可能反映使用时间，分享前请检查。状态与日志分别读取，并非原子快照。</p>
+          <div class="actions">
+            <button id="generateDiagnostic" type="button" disabled>生成诊断报告</button>
+            <button id="copyDiagnostic" type="button" disabled>复制报告</button>
+          </div>
+          <label class="field" for="diagnosticText">报告预览<textarea id="diagnosticText" rows="7" readonly placeholder="点击生成后在此预览"></textarea></label>
+          <p id="diagnosticStatus" class="muted" role="status" aria-live="polite">尚未生成</p>
+        </article>
       </section>
-      <form id="credentials" class="credentials" hidden>
-        <label>账号<input id="accountInput" autocomplete="username" /></label>
-        <label>密码<input id="passwordInput" type="password" autocomplete="current-password" /></label>
-        <button type="submit">保存</button>
-      </form>
-      <p id="notice" role="status"></p>
+      <section id="page-settings" aria-labelledby="settingsTitle" hidden>
+        <div class="section-heading"><h2 id="settingsTitle">应用设置</h2></div>
+        <article class="card settings-card">
+          <h3>外观与运行</h3>
+          <div class="setting-row">
+            <label for="notifications">系统通知<span class="muted">连接中断、恢复和凭据异常；系统可能限制显示</span></label>
+            <input id="notifications" class="toggle" type="checkbox" disabled />
+          </div>
+          <div class="setting-row">
+            <label for="theme">界面主题<span class="muted">跟随系统或手动选择</span></label>
+            <select id="theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
+          </div>
+          <div class="setting-row">
+            <label for="autostart">开机自启<span class="muted" id="autostartText">正在读取系统设置</span></label>
+            <input id="autostart" class="toggle" type="checkbox" disabled />
+          </div>
+        </article>
+        <article class="card settings-card">
+          <h3>校园网凭据</h3>
+          <p class="muted">凭据写入系统安全存储，保存后不会在界面中回显密码。</p>
+          <form id="credentials">
+            <label class="field" for="accountInput">账号<input id="accountInput" autocomplete="username" required /></label>
+            <label class="field" for="passwordInput">密码<input id="passwordInput" type="password" autocomplete="current-password" required /></label>
+            <button id="saveCredentials" class="primary" type="submit" disabled>保存凭据</button>
+          </form>
+          <div class="setting-row danger-row"><div><strong>清除本机凭据</strong><span class="muted">停止自动认证，不主动注销当前网络</span></div><button id="reset" class="danger" type="button" disabled>清除凭据</button></div>
+        </article>
+        <article class="card settings-card">
+          <div class="setting-row"><div><strong>停止后台服务</strong><span class="muted">彻底退出应用</span></div><button id="quit" class="danger" type="button" disabled>彻底退出</button></div>
+        </article>
+      </section>
+      <section id="page-about" aria-labelledby="aboutTitle" hidden>
+        <div class="section-heading"><h2 id="aboutTitle">关于应用</h2></div>
+        <article class="card about-card">
+          <img class="brand-icon about-icon app-brand-image" src="./app-icon.png" alt="" width="64" height="64" />
+          <h3>TYUT Keepalive</h3><p id="appVersion" class="muted">开发版本</p>
+          <p>校园网自动认证与后台保活工具。</p>
+          <p class="muted">Rust · Tauri 2 · 原生桌面窗口</p>
+          <p class="muted">项目仓库：Code-famer-horse/tyut-keepalive</p>
+          <p id="updateStatus" role="status" aria-live="polite" class="muted">正在读取更新配置</p>
+          <p id="updateNotes" class="muted" hidden></p>
+          <div class="actions">
+            <button id="checkUpdate" type="button" disabled>检查更新</button>
+            <button id="installUpdate" class="primary" type="button" disabled>安装签名更新</button>
+          </div>
+          <p class="muted">启动时检查一次；仅在你确认后下载、验证签名及安装。未配置可信公钥时停用。</p>
+        </article>
+      </section>
     </main>
-    <script type="module" src="./main.js"></script>
-  </body>
+    <p id="notice" role="status" aria-live="polite" hidden></p>
+    <footer class="app-footer"><span id="serviceText">正在连接后台</span><span>TYUT Keepalive</span></footer>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
 </html>

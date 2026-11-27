@@ -6,18 +6,63 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  verify:
     strategy:
       fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-latest]
+    uses: ./.github/workflows/platform-checks.yml
+    with:
+      os: ${{ matrix.os }}
+
+  prepare:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Validate release trust configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: python scripts/check_security.py --release
+      - name: Create or reuse draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if draft=$(gh release view "$TAG" --json isDraft --jq '.isDraft'); then
+            test "$draft" = true || { echo "Release already published; refusing to modify it"; exit 1; }
+          else
+            gh release create "$TAG" --verify-tag --draft --title "TYUT Keepalive $TAG" --notes "Windows / macOS / Linux desktop release"
+          fi
+
+  release:
+    needs: prepare
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      # All jobs update the same draft latest.json. Avoid concurrent writes.
+      max-parallel: 1
       matrix:
         include:
           - platform: windows-latest
             args: --bundles msi
-          - platform: macos-latest
-            args: --bundles dmg
+          - platform: macos-15
+            args: --target universal-apple-darwin --bundles app,dmg
           - platform: ubuntu-latest
             args: --bundles deb,appimage
     runs-on: ${{ matrix.platform }}
@@ -29,7 +74,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
 
       - uses: actions/setup-node@v4
         with:
@@ -37,24 +82,63 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-15' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
+      - name: Enable signed update artifacts for this release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: python scripts/check_security.py --enable-bundling
 
       - name: Check frontend HTML
         run: npm run check:html
 
-      - name: Build and publish
+      - name: Build and upload to draft
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'TYUT Keepalive v__VERSION__（Windows / macOS / Linux）'
           releaseBody: 'Tauri 2 三平台桌面版：开机自启、后台静默驻留托盘、单实例、响应式界面。按对应平台下载资产。'
           releaseAssetNamePattern: 'TYUT-Keepalive-v[version]-[platform]-[arch][ext]'
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: false
+          args: ${{ matrix.args }} -- --locked
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Check complete updater manifest before publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" --pattern latest.json --output "$RUNNER_TEMP/latest.json"
+          gh release view "$TAG" --json assets --jq '.assets' > "$RUNNER_TEMP/release-assets.json"
+          python scripts/check_update_manifest.py "$RUNNER_TEMP/latest.json" "$TAG" "$RUNNER_TEMP/release-assets.json"
+      - name: Publish only after all platform builds succeed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false

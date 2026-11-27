@@ -102,10 +102,7 @@ pub(crate) fn campus_host_ips() -> Result<Vec<Ipv4Addr>> {
     for server in CAMPUS_DNS {
         match query_campus_dns(server, LOGIN_DOMAIN) {
             Ok(addresses) => {
-                log(format!(
-                    "校园 DNS {}: {} -> {:?}",
-                    server, LOGIN_DOMAIN, addresses
-                ));
+                log("校园 DNS 解析成功");
                 return Ok(addresses);
             }
             Err(error) => errors.push(format!("{server}: {error:#}")),

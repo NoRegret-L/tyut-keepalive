@@ -1,7 +1,7 @@
 {
   "name": "tyut-keepalive",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.5.0",
   "scripts": { "tauri": "tauri", "check:html": "python scripts/check_html.py" },
   "devDependencies": { "@tauri-apps/cli": "^2" },
   "dependencies": { "@tauri-apps/api": "^2" }

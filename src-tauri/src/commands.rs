@@ -1,7 +1,6 @@
-use std::{fs, sync::Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
-use crate::{core::config, state::paths, SharedStatus};
+use crate::{core::config, state::{Event, Scheduler}, SharedStatus};
 
 #[tauri::command]
 pub(crate) fn get_status(status: State<'_, SharedStatus>) -> Result<serde_json::Value, String> {
@@ -10,39 +9,54 @@ pub(crate) fn get_status(status: State<'_, SharedStatus>) -> Result<serde_json::
 }
 
 #[tauri::command]
-pub(crate) fn reconnect(app: AppHandle) -> Result<(), String> {
-    let (_, control) = paths(&app).map_err(|error| error.to_string())?;
-    fs::write(control.join("reconnect"), b"1").map_err(|error| error.to_string())
+pub(crate) fn get_telemetry(state: State<'_, crate::telemetry::Shared>) -> Result<crate::telemetry::Snapshot, String> {
+    crate::telemetry::snapshot(&state)
+}
+#[tauri::command]
+pub(crate) fn set_notifications(state: State<'_, crate::telemetry::Shared>, enabled: bool) -> Result<bool, String> {
+    crate::telemetry::set_enabled(&state, enabled)
+}
+#[tauri::command]
+pub(crate) fn reconnect(scheduler: State<'_, Scheduler>) -> Result<(), String> {
+    scheduler.send(Event::Reconnect)
+}
+
+async fn wait_reply(rx: std::sync::mpsc::Receiver<Result<(), String>>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rx.recv().map_err(|_| "后台调度器已停止".to_string())?
+    }).await.map_err(|_| "后台任务已停止".to_string())?
 }
 
 #[tauri::command]
-pub(crate) fn reset_credentials(app: AppHandle) -> Result<(), String> {
-    let (config_path, control) = paths(&app).map_err(|error| error.to_string())?;
-    if config_path.exists() {
-        fs::remove_file(&config_path).map_err(|error| error.to_string())?;
-    }
-    fs::write(control.join("reset"), b"1").map_err(|error| error.to_string())?;
-    fs::write(control.join("reconnect"), b"1").map_err(|error| error.to_string())
+pub(crate) async fn set_paused(scheduler: State<'_, Scheduler>, paused: bool) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    scheduler.send(Event::SetPaused(paused, Some(tx)))?;
+    wait_reply(rx).await
+}
+#[tauri::command]
+pub(crate) async fn reset_credentials(scheduler: State<'_, Scheduler>) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    scheduler.send(Event::Clear(tx))?;
+    wait_reply(rx).await
 }
 
 #[tauri::command]
-pub(crate) fn setup_credentials(
-    app: AppHandle,
+pub(crate) async fn setup_credentials(
+    scheduler: State<'_, Scheduler>,
     account: String,
     password: String,
 ) -> Result<(), String> {
-    if account.trim().is_empty() || password.trim().is_empty() {
+    if account.trim().is_empty() || password.is_empty() {
         return Err("账号和密码不能为空".into());
     }
-    let (config_path, _) = paths(&app).map_err(|error| error.to_string())?;
-    let credentials = config::Credentials {
+    let value = config::Credentials {
         account: config::xor_encode(account.trim()),
-        password: config::xor_encode(password.trim()),
+        password: config::xor_encode(&password),
         saved_at: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
     };
-    config::save_credentials(&config_path, &credentials).map_err(|error| error.to_string())?;
-    let _ = app.emit("credentials-saved", ());
-    Ok(())
+    let (tx, rx) = std::sync::mpsc::channel();
+    scheduler.send(Event::Save(value, tx))?;
+    wait_reply(rx).await
 }
 
 #[tauri::command]
@@ -89,6 +103,3 @@ pub(crate) fn hide_window(app: AppHandle) {
     }
 }
 
-pub(crate) fn _unused_mutex_type() -> Mutex<()> {
-    Mutex::new(())
-}

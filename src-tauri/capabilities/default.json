@@ -1,7 +1,27 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口权限",
-  "windows": ["main"],
-  "permissions": ["core:default", "autostart:allow-enable", "autostart:allow-disable", "autostart:allow-is-enabled"]
+  "description": "仅本地主窗口调用应用命令、读取版本及监听事件；不授予通用插件权限",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:app:allow-version",
+    "allow-get-status",
+    "allow-get-telemetry",
+    "allow-set-notifications",
+    "allow-reconnect",
+    "allow-set-paused",
+    "allow-reset-credentials",
+    "allow-setup-credentials",
+    "allow-set-autostart",
+    "allow-is-autostart",
+    "allow-quit",
+    "allow-hide-window",
+    "allow-update-enabled",
+    "allow-check-update",
+    "allow-install-update"
+  ]
 }

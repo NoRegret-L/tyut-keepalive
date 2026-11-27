@@ -1,12 +1,16 @@
 [package]
 name = "tyut-keepalive"
-version = "0.3.3"
+version = "0.5.0"
 edition = "2021"
 description = "TYUT campus network auto-login (Tauri desktop)"
 
 [lib]
 name = "tyut_keepalive_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Explicitly opt in; no dependency changes and no effect on official builds.
+test-build = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -15,6 +19,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-updater = "2.14.1"
+netwatcher = "0.8"
+tauri-plugin-power-monitor = "0.1"
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -22,6 +30,10 @@ netdev = { version = "0.47", default-features = false }
 rand = "0.9"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "cookies", "query", "rustls"] }
-rpassword = "7"
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Temporary upstream 0.1.0 fix; remove when a corrected release is available.
+[patch.crates-io]
+tauri-plugin-power-monitor = { path = "vendor/tauri-plugin-power-monitor" }

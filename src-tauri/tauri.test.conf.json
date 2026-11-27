@@ -1,0 +1,41 @@
+{
+  "productName": "TYUT Keepalive Test",
+  "mainBinaryName": "tyut-keepalive-test",
+  "version": "0.5.0",
+  "identifier": "com.tyut.keepalive.test",
+  "build": {
+    "frontendDist": "../dist-test"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "TYUT 校园网保活 · 独立测试版",
+        "width": 680,
+        "height": 540,
+        "minWidth": 360,
+        "minHeight": 420,
+        "resizable": true,
+        "center": true,
+        "visible": false
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "wix": {
+        "upgradeCode": "fb865fa7-c229-5379-8feb-be158ce370a7"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "dangerousInsecureTransportProtocol": false,
+      "allowDowngrades": false,
+      "requireSignedVersion": true
+    }
+  }
+}

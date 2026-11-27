@@ -9,6 +9,7 @@ use reqwest::{
 };
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -83,7 +84,8 @@ pub(crate) fn check_network(client: &Client) -> bool {
     false
 }
 
-fn portal_ip(client: &Client) -> Result<Option<Ipv4Addr>> {
+fn portal_ip(client: &Client, cancelled: &AtomicBool) -> Result<Option<Ipv4Addr>> {
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     log(format!("访问 Portal：{PORTAL_URL}"));
     let mut url = Url::parse(PORTAL_URL)?;
     let mut response = client
@@ -91,6 +93,7 @@ fn portal_ip(client: &Client) -> Result<Option<Ipv4Addr>> {
         .timeout(Duration::from_secs(10))
         .send()?;
     for _ in 0..10 {
+        anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
         if !response.status().is_redirection() {
             break;
         }
@@ -99,7 +102,11 @@ fn portal_ip(client: &Client) -> Result<Option<Ipv4Addr>> {
             None => break,
         };
         url = url.join(&location)?;
-        log(format!("Portal 重定向到：{url}"));
+        // Preserve campus redirect compatibility, but reject non-HTTP schemes
+        // and embedded user credentials; authentication always uses LOGIN_HOST.
+        anyhow::ensure!(matches!(url.scheme(), "http" | "https") && url.username().is_empty() && url.password().is_none(),
+            "Portal 重定向地址不安全");
+        log("Portal 收到重定向响应");
         response = client
             .get(url.clone())
             .timeout(Duration::from_secs(10))
@@ -122,7 +129,7 @@ fn portal_ip(client: &Client) -> Result<Option<Ipv4Addr>> {
             .and_then(|capture| capture.get(1))
             .and_then(|matched| matched.as_str().parse::<Ipv4Addr>().ok())
         {
-            log(format!("Portal 提取到 IP：{ip}"));
+            log("Portal 提取到客户端 IP");
             return Ok(Some(ip));
         }
     }
@@ -167,21 +174,23 @@ fn load_config(client: &Client, ip: Ipv4Addr, mac: &str) -> Result<()> {
         .headers(protocol_headers())
         .query(&params)
         .timeout(Duration::from_secs(15))
-        .send()?;
+        .send()
+        .map_err(|error| error.without_url())?;
     let status = response.status();
     if !status.is_success() {
         bail!("loadConfig 返回 HTTP {status}");
     }
-    let _body = response.text()?;
+    let _body = response.text().map_err(|error| error.without_url())?;
     log("loadConfig 请求完成");
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LoginOutcome {
     Success,
     BadPassword,
     Indeterminate,
+    Reachable,
 }
 
 pub(crate) fn interpret_login(text: &str) -> LoginOutcome {
@@ -199,7 +208,7 @@ pub(crate) fn interpret_login(text: &str) -> LoginOutcome {
     }
 }
 
-fn login(client: &Client, ip: Ipv4Addr, credentials: &Credentials) -> Result<LoginOutcome> {
+fn login(client: &Client, ip: Ipv4Addr, credentials: &Credentials, cancelled: &AtomicBool) -> Result<LoginOutcome> {
     let params = vec![
         ("callback", xor_encode("dr1004")),
         ("login_method", xor_encode("1")),
@@ -221,15 +230,17 @@ fn login(client: &Client, ip: Ipv4Addr, credentials: &Credentials) -> Result<Log
         ("v", timestamp_param()?),
         ("encrypt", "1".to_owned()),
     ];
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     log("请求 login ...");
     let response = client
         .get(format!("{LOGIN_HOST}/eportal/portal/login"))
         .headers(protocol_headers())
         .query(&params)
         .timeout(Duration::from_secs(15))
-        .send()?;
+        .send()
+        .map_err(|error| error.without_url())?;
     let status = response.status();
-    let body = response.text()?;
+    let body = response.text().map_err(|error| error.without_url())?;
     if !status.is_success() {
         bail!("登录接口 HTTP 状态异常：{status}");
     }
@@ -238,34 +249,38 @@ fn login(client: &Client, ip: Ipv4Addr, credentials: &Credentials) -> Result<Log
         LoginOutcome::Success => log("登录接口确认成功或已在线"),
         LoginOutcome::BadPassword => log("登录失败：密码错误"),
         LoginOutcome::Indeterminate => log("登录响应无法确认结果；将检测网络连通性"),
+        LoginOutcome::Reachable => (),
     }
     Ok(outcome)
 }
 
-pub(crate) fn attempt_login(credentials: &Credentials, mac_override: Option<&str>) -> Result<bool> {
+pub(crate) fn attempt_login(credentials: &Credentials, mac_override: Option<&str>, cancelled: &AtomicBool) -> Result<LoginOutcome> {
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     let ip = local_ip()?;
     let mac = match mac_override {
         Some(mac) => mac.to_owned(),
         None => local_mac(ip)?,
     };
-    log(format!("本机 IP：{ip}，MAC：{mac}"));
+    log("已获取本机网络接口信息");
     let resolved_ips = match campus_host_ips() {
         Ok(ips) => Some(ips),
-        Err(error) => {
-            log(format!("校园 DNS 不可用，改用系统 DNS：{error:#}"));
+        Err(_) => {
+            log("校园 DNS 不可用，改用系统 DNS");
             None
         }
     };
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     let client = client(resolved_ips)?;
-    let user_ip = portal_ip(&client)?.unwrap_or(ip);
-    log(format!("最终使用 IP：{user_ip}"));
+    let user_ip = portal_ip(&client, cancelled)?.unwrap_or(ip);
+    log("已确定认证使用的客户端 IP");
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     load_config(&client, user_ip, &mac)?;
     thread::sleep(Duration::from_millis(500));
-    let outcome = login(&client, user_ip, credentials)?;
+    let outcome = login(&client, user_ip, credentials, cancelled)?;
+    anyhow::ensure!(!cancelled.load(Ordering::Acquire), "认证任务已取消");
     match outcome {
-        LoginOutcome::Success => Ok(true),
-        LoginOutcome::BadPassword => Ok(false),
-        LoginOutcome::Indeterminate => Ok(check_network(&client)),
+        LoginOutcome::Indeterminate if check_network(&client) => Ok(LoginOutcome::Reachable),
+        other => Ok(other),
     }
 }
 

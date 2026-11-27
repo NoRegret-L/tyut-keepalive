@@ -1,0 +1,218 @@
+name: Independent Test Installers
+on:
+  push:
+    branches: ['develop/v*']
+    paths:
+      - '.github/workflows/test-build.yml'
+      - 'src-tauri/tauri.test.conf.json'
+      - 'scripts/prepare_test_build.py'
+      - 'scripts/collect_test_artifacts.py'
+      - 'scripts/test_test_artifacts.py'
+      - 'src-tauri/icons/**'
+      - 'dist/**'
+      - 'src-tauri/src/**'
+      - 'src-tauri/vendor/**'
+      - '.github/workflows/platform-checks.yml'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/tauri.conf.json'
+      - 'scripts/test_ui.mjs'
+      - 'scripts/check_security.py'
+      - 'scripts/check_update_manifest.py'
+      - 'scripts/test_release_checks.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: startsWith(github.ref, 'refs/heads/develop/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-15]
+    uses: ./.github/workflows/platform-checks.yml
+    with:
+      os: ${{ matrix.os }}
+
+  bundle:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            target: x86_64-pc-windows-msvc
+            bundles: msi
+          - os: ubuntu-22.04
+            platform: linux
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+          - os: macos-15
+            platform: macos
+            target: universal-apple-darwin
+            bundles: app,dmg
+    runs-on: ${{ matrix.os }}
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Linux bundle dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: independent-test-${{ matrix.target }}
+      - name: Install locked frontend tools
+        run: npm ci
+      - name: Verify production security and artifact checks
+        run: |
+          python scripts/check_security.py
+          python scripts/test_test_artifacts.py
+      - name: Prepare isolated Windows and macOS frontend
+        if: runner.os != 'Linux'
+        run: python scripts/prepare_test_build.py
+      - name: Prepare isolated Linux frontend and Cargo identity
+        if: runner.os == 'Linux'
+        run: python scripts/prepare_test_build.py --linux-package-identity
+      - name: Verify prepared test inputs
+        run: |
+          node --check dist-test/main.js
+          cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked
+      - name: Check test feature
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features test-build --locked
+      - name: Build unsigned independent test installers
+        run: npm run tauri -- build --config src-tauri/tauri.test.conf.json --features test-build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+      - name: Verify and hash test bundles
+        run: python scripts/collect_test_artifacts.py --platform ${{ matrix.platform }} --target ${{ matrix.target }}
+      - name: Upload only test installers and SHA-256 checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: TYUT-Keepalive-Test-${{ matrix.platform }}-${{ matrix.platform == 'macos' && 'universal' || 'x64' }}-${{ github.sha }}
+          path: test-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+
+
+  publish_test:
+    needs: [verify, bundle]
+    # Publishing is explicit; a normal development push only builds artifacts.
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'NoRegret-L/tyut-keepalive' && startsWith(github.ref, 'refs/heads/develop/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: test-prerelease-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TYUT-Keepalive-Test-*-${{ github.sha }}
+          path: publish-input
+      - name: Verify exact build identities and installer checksums
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil
+          sha = os.environ["GITHUB_SHA"]
+          version = json.loads(pathlib.Path("src-tauri/tauri.test.conf.json").read_text())["version"]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version) or os.environ["GITHUB_REF_NAME"] != "develop/v" + version:
+              raise SystemExit("branch/version mismatch")
+          output = pathlib.Path("publish-output")
+          output.mkdir()
+          sums = []
+          for platform, suffixes in (("windows", {".msi"}), ("linux", {".deb", ".AppImage"}), ("macos", {".dmg"})):
+              arch = "universal" if platform == "macos" else "x64"
+              directory = pathlib.Path("publish-input") / f"TYUT-Keepalive-Test-{platform}-{arch}-{sha}"
+              metadata = json.loads((directory / "BUILD-INFO.json").read_text())
+              expected = {"channel":"test-only", "commit":sha, "platform":platform, "version":version, "identifier":"com.tyut.keepalive.test", "updater":"disabled"}
+              if any(metadata.get(k) != v for k,v in expected.items()):
+                  raise SystemExit("unexpected build metadata")
+              checks = {}
+              for line in (directory / "SHA256SUMS.txt").read_text().splitlines():
+                  digest, name = line.split("  ", 1)
+                  if not re.fullmatch(r"[a-f0-9]{64}", digest) or pathlib.Path(name).name != name or name in checks:
+                      raise SystemExit("invalid checksum manifest")
+                  checks[name] = digest
+              files = [p for p in directory.iterdir() if p.suffix in suffixes]
+              if len(files) != len(suffixes) or {p.suffix for p in files} != suffixes or set(checks) != {p.name for p in files} | {"BUILD-INFO.json"}:
+                  raise SystemExit("incomplete installer set")
+              for p in [*files, directory / "BUILD-INFO.json"]:
+                  with p.open("rb") as stream:
+                      digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                  if digest != checks[p.name]:
+                      raise SystemExit("checksum mismatch")
+                  if p.name == "BUILD-INFO.json":
+                      name = f"BUILD-INFO-{platform}.json"
+                  else:
+                      name = f"TYUT-Keepalive-Test-v{version}-{platform}-{arch}{p.suffix}"
+                  shutil.copyfile(p, output / name)
+                  sums.append(f"{digest}  {name}")
+          (output / "SHA256SUMS.txt").write_text("\n".join(sorted(sums)) + "\n")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"TEST_TAG=test-v{version}-{sha}\n")
+          PY
+      - name: Publish verified installers as a non-latest prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TEST_TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$TEST_TAG" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft | not)')" = true
+            test "$(gh api "repos/$GH_REPO/commits/$TEST_TAG" --jq .sha)" = "$GITHUB_SHA"
+            mkdir -p existing-release
+            gh release download "$TEST_TAG" --dir existing-release
+            # Verify the existing immutable release; a rebuild may not be byte reproducible.
+            python - <<'PY'
+          import hashlib, json, os, pathlib, re
+          existing = pathlib.Path("existing-release")
+          expected = pathlib.Path("publish-output")
+          names = {p.name for p in expected.iterdir()}
+          if {p.name for p in existing.iterdir()} != names:
+              raise SystemExit("existing release asset set differs; refusing to overwrite")
+          sums = {}
+          for line in (existing / "SHA256SUMS.txt").read_text().splitlines():
+              digest, name = line.split("  ", 1)
+              if not re.fullmatch(r"[a-f0-9]{64}", digest) or name not in names - {"SHA256SUMS.txt"} or name in sums:
+                  raise SystemExit("invalid existing checksum manifest")
+              sums[name] = digest
+          if set(sums) != names - {"SHA256SUMS.txt"}:
+              raise SystemExit("incomplete existing checksum manifest")
+          for name, digest in sums.items():
+              with (existing / name).open("rb") as stream:
+                  if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
+                      raise SystemExit("existing release checksum mismatch")
+              if name.startswith("BUILD-INFO-"):
+                  old = json.loads((existing / name).read_text())
+                  new = json.loads((expected / name).read_text())
+                  for key in ("channel", "commit", "platform", "version", "identifier", "updater"):
+                      if old.get(key) != new.get(key):
+                          raise SystemExit("existing release identity mismatch")
+          print("Existing test release verified; no assets changed")
+          PY
+            exit 0
+          fi
+          gh release create "$TEST_TAG" publish-output/* \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "TYUT Keepalive $TEST_TAG" \
+            --notes "Independent unsigned test installers for Windows x64, Linux x64 and macOS Universal. Production auto-update is disabled. Commit: $GITHUB_SHA. Verify downloads with SHA256SUMS.txt."

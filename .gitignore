@@ -15,3 +15,13 @@ archive/python/
 tyut-keepalive-rs-tmux-psmux.zip
 
 node_modules/
+
+# Never commit update signing private keys or local credential files.
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Generated isolated test frontend and installer collection.
+/dist-test/
+/test-artifacts/
