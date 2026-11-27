@@ -36,4 +36,9 @@ serde_json = "1"
 
 # Temporary upstream 0.1.0 fix; remove when a corrected release is available.
 [patch.crates-io]
+# RUSTSEC-2024-0429: reviewed official two-line backport; see docs/v0.5.0-glib-backport.md.
+glib = { path = "vendor/glib-0.18.5" }
 tauri-plugin-power-monitor = { path = "vendor/tauri-plugin-power-monitor" }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+glib = "=0.18.5"
