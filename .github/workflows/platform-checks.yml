@@ -35,11 +35,15 @@ jobs:
           node --check dist/ui-state.js
           node --test scripts/test_ui.mjs
           python scripts/check_security.py
+          python scripts/check_glib_backport.py
           python scripts/test_release_checks.py
       - name: Resolve dependencies
         run: cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked
       - name: Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: GLib optimized iterator regression
+        if: runner.os == 'Linux'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --release --locked --test glib_variant_str_iter
       - name: Link macOS release binary (detect missing native symbols)
         if: runner.os == 'macOS'
         run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked --bin tyut-keepalive
@@ -58,3 +62,8 @@ jobs:
       - name: Audit resolved Cargo.lock (RustSec)
         if: runner.os == 'Linux'
         run: cargo audit --file src-tauri/Cargo.lock
+      - name: Audit original registry identity of vendored GLib (do not suppress advisories)
+        if: runner.os == 'Linux'
+        run: |
+          python scripts/check_glib_backport.py --audit-lock "$RUNNER_TEMP/glib-registry-audit.lock"
+          cargo audit --file "$RUNNER_TEMP/glib-registry-audit.lock"
