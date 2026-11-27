@@ -42,30 +42,44 @@ def policy_entries(policy, approval):
             .intersection(policy["licenses"]["allow"]), "reviewed terms must not be globally allowed")
     return records
 
-def report_sections(text):
+def report_sections(report):
+    """Use cargo-about's documented JSON schema, not delimiters in legal text."""
+    licenses = report.get("licenses")
+    require(isinstance(licenses, list) and licenses, "empty cargo-about report")
     result = {}
-    for section in text.split("=" * 70 + "\n")[1:]:
-        header, sep, body = section.partition("\n\n")
-        lines = header.splitlines()
-        require(sep and len(lines) >= 3 and lines[1] == "Used by:" and body.strip(),
-                "unexpected cargo-about section")
-        for line in lines[2:]:
-            require(line.startswith("- "), "unexpected cargo-about package entry")
-            result.setdefault(line[2:], []).append((lines[0], body))
-    require(result, "empty cargo-about report")
+    for entry in licenses:
+        ident, name, body = entry["id"], entry["name"], entry["text"]
+        users = entry["used_by"]
+        require(all(isinstance(x, str) and x.strip() for x in (ident, name, body))
+                and isinstance(users, list) and users, "invalid cargo-about license record")
+        for user in users:
+            crate = user["crate"]
+            key = f'{crate["name"]} {crate["version"]}'
+            result.setdefault(key, []).append((ident, body))
     return result
+
+def render_report(report):
+    lines = ["THIRD-PARTY RUST LICENSE TEXTS — REVIEW CANDIDATE",
+             "Not a distribution approval or an exhaustive installer notice.",
+             "Includes build and development dependencies across the four supported targets.",
+             "Application license, npm packages, native libraries and bundled assets require separate review.", ""]
+    for entry in report["licenses"]:
+        lines += ["=" * 70, f'{entry["name"]} ({entry["id"]})', "Used by:"]
+        lines += [f'- {u["crate"]["name"]} {u["crate"]["version"]}' for u in entry["used_by"]]
+        lines += ["", entry["text"], ""]
+    return "\n".join(lines) + "\n"
 
 def check_report(sections, package):
     key = f'{package["name"]} {package["version"]}'
     texts = sections.get(key, [])
     license_id = package["license"]
     if license_id == "Apache-2.0 WITH LLVM-exception":
-        require(any("(Apache-2.0)" in h and "LLVM" in body and "exception" in body.lower()
-                    for h, body in texts), "missing LLVM exception text: " + key)
+        require(any(ident in ("Apache-2.0", license_id) and "LLVM" in body and "exception" in body.lower()
+                    for ident, body in texts), "missing LLVM exception text: " + key)
     else:
-        require(any(f"({license_id})" in h for h, _ in texts), "missing license text: " + key)
+        require(any(ident == license_id for ident, _ in texts), "missing license text: " + key)
     if package["name"] == "unicode-ident":
-        require(any("(MIT)" in h or "(Apache-2.0)" in h for h, _ in texts),
+        require(any(ident in ("MIT", "Apache-2.0") for ident, _ in texts),
                 "unicode-ident AND expression not fully represented")
 
 def copy_crate_notices(archive, package, output):
@@ -108,8 +122,10 @@ def main():
             key = (p["name"], p["version"])
             require(key not in packages or packages[key]["id"] == p["id"], "ambiguous package " + str(key))
             packages[key] = p
+    data = json_read(evidence / "cargo-about.json")
+    sections = report_sections(data)
     report = evidence / "THIRD-PARTY-RUST-REVIEW.txt"
-    sections = report_sections(report.read_text(encoding="utf-8"))
+    report.write_text(render_report(data), encoding="utf-8")
     output = evidence / "bundle-resources"
     output.mkdir()
     (output / "sources").mkdir()

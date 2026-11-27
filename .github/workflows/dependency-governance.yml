@@ -16,6 +16,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
+      - name: Regression tests for structured license report
+        run: python scripts/test_license_report.py
       - name: Collect locked four-target graphs and npm inventory
         run: python scripts/dependency_inventory.py --output "$RUNNER_TEMP/dependency-evidence"
       - name: Install pinned cargo-about
@@ -28,8 +30,8 @@ jobs:
           mkdir "$scratch"
           git archive HEAD | tar -x -C "$scratch"
           python scripts/prepare_notice_inventory.py --checkout "$scratch"
-          cargo about generate --locked --fail --manifest-path "$scratch/src-tauri/Cargo.toml" --config "$scratch/src-tauri/about.toml" --output-file "$output/THIRD-PARTY-RUST-REVIEW.txt" "$scratch/src-tauri/about.hbs" 2>&1 | tee "$output/cargo-about.log"
-          test -s "$output/THIRD-PARTY-RUST-REVIEW.txt"
+          cargo about generate --locked --fail --format json --manifest-path "$scratch/src-tauri/Cargo.toml" --config "$scratch/src-tauri/about.toml" --output-file "$output/cargo-about.json" 2>&1 | tee "$output/cargo-about.log"
+          test -s "$output/cargo-about.json"
           cmp src-tauri/Cargo.lock "$scratch/src-tauri/Cargo.lock"
       - uses: actions/setup-node@v4
         with:
