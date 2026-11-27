@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 //! Platform secret storage. Only the scheduler thread accesses the store.
 //! The single secure record contains the protocol-encoded account and password.
 //! XOR is a wire-format compatibility mechanism, never the storage protection.

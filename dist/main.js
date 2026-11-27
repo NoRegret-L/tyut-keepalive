@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 import { normalizeTheme, readTheme, saveTheme, describeState, keepaliveControls, filterHistory, diagnosticReport, countdownFrame } from "./ui-state.js";
 const $ = id => document.getElementById(id);
 const pages = ["overview", "logs", "settings", "about"];

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 use anyhow::{bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use regex::Regex;

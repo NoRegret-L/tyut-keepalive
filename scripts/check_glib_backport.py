@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 """Verify the exact reviewed GLib backport and keep registry advisory coverage."""
 import argparse
 import hashlib

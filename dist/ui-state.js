@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 export const THEMES = Object.freeze(["system", "light", "dark"]);
 export function normalizeTheme(value) { return THEMES.includes(value) ? value : "system"; }
 export function readTheme(storage) {
