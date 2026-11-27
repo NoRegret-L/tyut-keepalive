@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 //! Only the compiled-in trust policy may select an update source and key.
 //! The WebView receives metadata, not a general-purpose installer or URL API.
 use serde::Serialize;

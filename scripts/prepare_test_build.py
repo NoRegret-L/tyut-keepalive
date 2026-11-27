@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 """Generate a visibly marked test frontend; never modify the production dist."""
 import argparse
 import json

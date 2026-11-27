@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(

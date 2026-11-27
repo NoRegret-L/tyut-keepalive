@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 from html.parser import HTMLParser
 from pathlib import Path
 import json
