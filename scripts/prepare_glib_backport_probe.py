@@ -70,7 +70,8 @@ def main():
     # gtk-rs/gtk-rs-core#1343; same two replacements as Debian 0.18.5-7 patch 0007.
     after = replace_once(before, "let p: *mut libc::c_char = std::ptr::null_mut();",
                          "let mut p: *mut libc::c_char = std::ptr::null_mut();")
-    after = replace_once(after, "\n                    &p,\n", "\n                    &mut p,\n")
+    after = replace_once(after, "\n                s as *const u8 as *const _,\n                &p,\n                std::ptr::null::<i8>(),\n",
+                         "\n                s as *const u8 as *const _,\n                &mut p,\n                std::ptr::null::<i8>(),\n")
     path.write_text(after, encoding="utf-8")
     patch = "".join(difflib.unified_diff(before.splitlines(keepends=True),
                     after.splitlines(keepends=True), fromfile="a/src/variant_iter.rs",
