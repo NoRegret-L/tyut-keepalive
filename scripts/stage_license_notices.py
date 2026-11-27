@@ -97,8 +97,28 @@ def copy_crate_notices(archive, package, output):
             require(not dest.exists(), "duplicate notice " + member.name)
             dest.write_bytes(data)
             count += 1
+        if not count and (package["name"], package["version"], package["license"]) == ("selectors", "0.38.0", "MPL-2.0"):
+            # This exact upstream crate declares MPL in Cargo.toml and in source
+            # headers, but its published archive lacks a standalone root LICENSE.
+            # The archive checksum and cargo-about coverage were verified by caller.
+            members = [m for m in tar.getmembers() if m.name == prefix + "/lib.rs"]
+            require(len(members) == 1 and members[0].isfile(), "missing selectors lib.rs")
+            source = tar.extractfile(members[0]).read()
+            header = re.match(rb"/\* This Source Code Form is subject to the terms of the Mozilla Public\r?\n \* License, v\. 2\.0\. If a copy of the MPL was not distributed with this\r?\n \* file, You can obtain one at https://mozilla\.org/MPL/2\.0/\. \*/", source)
+            require(header is not None, "selectors source MPL header differs; review required")
+            # Preserve the original header verbatim and explicitly label the
+            # separate standard text as supplied, not an upstream original file.
+            (output / "SOURCE-HEADER-lib.rs.txt").write_bytes(header.group(0) + b"\n")
+            shutil.copyfile(ROOT / "LICENSE", output / "MPL-2.0-standard-supplied.txt")
+            (output / "NOTICE-SOURCE.txt").write_text(
+                "selectors 0.38.0: no standalone root license in published crate.\n"
+                "SOURCE-HEADER-lib.rs.txt is the original source header; the standard MPL-2.0 text is supplied separately.\n"
+                "The checksum-verified unmodified crate is included under sources/; all original source notices remain intact.\n",
+                encoding="utf-8")
+            return {"original_root_notice_files": 0, "source_header": "lib.rs",
+                    "supplied_standard_text": "MPL-2.0-standard-supplied.txt"}
     require(count, "no original root license/notice file for " + prefix)
-    return count
+    return {"original_root_notice_files": count}
 
 def main():
     parser = argparse.ArgumentParser()
@@ -163,10 +183,10 @@ def main():
         require(archive.is_file() and digest(archive) == checksum, "missing or invalid original crate archive " + filename)
         notices = output / "original-notices" / f"{key[0]}-{key[1]}"
         notices.mkdir()
-        count = copy_crate_notices(archive, package, notices)
+        notice_evidence = copy_crate_notices(archive, package, notices)
         row = {"name": key[0], "version": key[1], "license": p["license"],
                "sha256": checksum, "url": f"https://static.crates.io/crates/{key[0]}/{filename}",
-               "original_notice_files": count}
+               **notice_evidence}
         if package["license"] == "MPL-2.0":
             shutil.copyfile(archive, output / "sources" / filename)
             source_rows.append({**row, "archive": "sources/" + filename})
