@@ -25,7 +25,7 @@ netwatcher = "0.8"
 tauri-plugin-power-monitor = "0.1"
 anyhow = "1"
 base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+jiff = "0.2"
 netdev = { version = "0.47", default-features = false }
 rand = "0.9"
 regex = "1"

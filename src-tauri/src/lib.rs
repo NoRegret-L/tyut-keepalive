@@ -4,6 +4,7 @@ mod state;
 mod tray;
 mod telemetry;
 mod updates;
+mod wall_clock;
 use crate::core::{config, dns};
 use tauri::Manager;
 
@@ -36,7 +37,7 @@ pub(crate) const LOGIN_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; 
 pub(crate) fn log(message: impl AsRef<str>) {
     println!(
         "[{}] {}",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+        wall_clock::local_datetime(&jiff::Zoned::now()),
         message.as_ref()
     );
 }

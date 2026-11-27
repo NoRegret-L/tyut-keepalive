@@ -52,7 +52,7 @@ pub(crate) async fn setup_credentials(
     let value = config::Credentials {
         account: config::xor_encode(account.trim()),
         password: config::xor_encode(&password),
-        saved_at: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
+        saved_at: Some(crate::wall_clock::local_datetime(&jiff::Zoned::now())),
     };
     let (tx, rx) = std::sync::mpsc::channel();
     scheduler.send(Event::Save(value, tx))?;
