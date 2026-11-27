@@ -83,7 +83,7 @@ pub(crate) struct Journal {
 }
 pub(crate) type Shared = Mutex<Journal>;
 
-fn today() -> String { chrono::Local::now().format("%Y-%m-%d").to_string() }
+fn today() -> String { crate::wall_clock::local_date(&jiff::Zoned::now()) }
 fn private_open(path: &Path, append: bool) -> std::io::Result<fs::File> {
     let mut options = OpenOptions::new();
     options.create(true).write(true).append(append).truncate(!append);
@@ -166,8 +166,10 @@ impl Journal {
         self.rows.truncate(ROW_LIMIT);
     }
     fn record(&mut self, kind: Kind) {
-        self.daily.roll(&today());
-        let row = Row { time: chrono::Local::now().to_rfc3339(), kind, daily: self.daily.clone() };
+        // Derive the event time and date from one instant, including across midnight.
+        let now = jiff::Zoned::now();
+        self.daily.roll(&crate::wall_clock::local_date(&now));
+        let row = Row { time: crate::wall_clock::rfc3339(&now), kind, daily: self.daily.clone() };
         if append_row(&self.dir, &row).is_err() {
             // Sticky for this process: later success cannot restore missing history.
             self.persistence_ok = false;

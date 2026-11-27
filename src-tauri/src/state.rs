@@ -144,7 +144,7 @@ fn publish_gate(app: &AppHandle, shared: &SharedStatus, status: &mut Status,
     publish(app, shared, status, state, message);
 }
 fn now() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    crate::wall_clock::local_datetime(&jiff::Zoned::now())
 }
 fn publish(app: &AppHandle, shared: &SharedStatus, status: &mut Status,
            state: ConnectionState, message: impl Into<String>) {
