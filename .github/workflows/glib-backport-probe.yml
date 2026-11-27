@@ -1,0 +1,54 @@
+name: GLib backport probe
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/glib-backport-probe.yml'
+      - 'scripts/prepare_glib_backport_probe.py'
+      - 'scripts/glib_variant_str_iter_probe.rs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-release-probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+      - name: Verify and patch the published GLib crate in a disposable archive
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/glib-probe"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/glib-probe"
+          python scripts/prepare_glib_backport_probe.py --checkout "$RUNNER_TEMP/glib-probe" --evidence "$RUNNER_TEMP/glib-evidence"
+      - name: Verify exact resolved dependency and run optimized regression tests
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/glib-probe"
+          cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked --filter-platform x86_64-unknown-linux-gnu > "$RUNNER_TEMP/glib-metadata.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          meta = json.loads((Path(os.environ["RUNNER_TEMP"]) / "glib-metadata.json").read_text())
+          packages = [p for p in meta["packages"] if p["name"] == "glib"]
+          assert len(packages) == 1 and packages[0]["version"] == "0.18.5" and packages[0]["source"] is None
+          assert Path(packages[0]["manifest_path"]).resolve() == (Path.cwd() / "src-tauri/vendor/glib-0.18.5/Cargo.toml").resolve()
+          PY
+          cargo tree --manifest-path src-tauri/Cargo.toml --locked -i glib | tee "$RUNNER_TEMP/glib-evidence/glib-tree.txt"
+          cargo test --manifest-path src-tauri/Cargo.toml --release --locked --lib --test glib_variant_str_iter_probe
+      - name: Preserve provenance for independent review (no installer or release)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glib-backport-probe-evidence
+          path: ${{ runner.temp }}/glib-evidence/
+          if-no-files-found: warn
