@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 //! Structured, credential-free events and observed connection statistics.
 //! A single journal feeds the dashboard and notification policy.
 use crate::state::ConnectionState;

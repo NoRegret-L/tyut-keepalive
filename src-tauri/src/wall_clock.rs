@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 //! Presentation/storage wall-clock formats, independent of monotonic scheduling.
 //! Keep the legacy local-date and RFC 3339 contracts while using a maintained library.
 use jiff::Zoned;

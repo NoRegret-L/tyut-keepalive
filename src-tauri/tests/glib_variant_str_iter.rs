@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 //! Regression for RUSTSEC-2024-0429, including optimized Linux builds.
 #![cfg(target_os = "linux")]
 use glib::{prelude::*, Variant};

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 """Validate the generated draft release manifest; runtime updater verifies cryptography."""
 import base64
 import json

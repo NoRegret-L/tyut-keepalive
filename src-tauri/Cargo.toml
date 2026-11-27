@@ -2,6 +2,7 @@
 name = "tyut-keepalive"
 version = "0.5.0"
 edition = "2021"
+license = "MPL-2.0"
 description = "TYUT campus network auto-login (Tauri desktop)"
 
 [lib]

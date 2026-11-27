@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 """Collect only expected installer files; hash each and record exact commit."""
 import argparse
 import hashlib

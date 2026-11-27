@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 """Fail closed on accidental WebView privilege or updater policy expansion."""
 import argparse
 import base64

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeTheme, readTheme, saveTheme, describeState, addHistory, HISTORY_LIMIT, keepaliveControls, filterHistory, diagnosticReport, countdownFrame } from "../dist/ui-state.js";
