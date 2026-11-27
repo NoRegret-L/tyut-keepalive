@@ -31,6 +31,13 @@ jobs:
           cargo about generate --locked --fail --manifest-path "$scratch/src-tauri/Cargo.toml" --config "$scratch/src-tauri/about.toml" --output-file "$output/THIRD-PARTY-RUST-REVIEW.txt" "$scratch/src-tauri/about.hbs" 2>&1 | tee "$output/cargo-about.log"
           test -s "$output/THIRD-PARTY-RUST-REVIEW.txt"
           cmp src-tauri/Cargo.lock "$scratch/src-tauri/Cargo.lock"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install locked npm runtime dependencies without scripts
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Stage reviewed Rust notices and exact MPL source archives
+        run: python scripts/stage_license_notices.py --evidence "$RUNNER_TEMP/dependency-evidence"
       - name: Verify production manifests and lockfiles unchanged
         if: always()
         run: git diff --exit-code -- src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
@@ -50,7 +57,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install pinned cargo-deny
         run: cargo install cargo-deny --version 0.22.1 --locked
-      - name: Evaluate provisional SPDX policy (unapproved terms fail)
+      - name: Evaluate exact-version SPDX policy (unapproved terms fail)
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/license-policy"
@@ -65,3 +72,44 @@ jobs:
           name: license-policy-review
           path: ${{ runner.temp }}/license-policy/
           if-no-files-found: warn
+  package-notice-smoke:
+    needs: [graph-and-notices, license-policy-review]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux bundle dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: dependency-governance-evidence
+          path: ${{ runner.temp }}/dependency-evidence
+      - name: Prepare resource overlay without changing production configuration
+        run: python scripts/verify_license_bundle.py --resources "$RUNNER_TEMP/dependency-evidence/bundle-resources"
+      - name: Build unsigned DEB for local verification only
+        run: |
+          npm ci
+          npm run tauri -- build --config src-tauri/tauri.license-review.generated.json --bundles deb -- --locked
+      - name: Extract DEB and verify every staged license/source byte
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -type f)
+          test "${#packages[@]}" -eq 1
+          python scripts/verify_license_bundle.py --resources "$RUNNER_TEMP/dependency-evidence/bundle-resources" --deb "${packages[0]}"
+      - name: Verify production files unchanged
+        if: always()
+        run: git diff --exit-code -- src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
