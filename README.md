@@ -66,11 +66,13 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo check --manifest-path src-tauri/Cargo.toml --release --locked
 cargo install cargo-audit --version 0.23.0 --locked
 cargo audit --file src-tauri/Cargo.lock
+python scripts/check_glib_backport.py --audit-lock /tmp/tyut-registry-audit.lock
+cargo audit --file /tmp/tyut-registry-audit.lock
 ```
 
 开发检查采用锁定依赖；新增依赖的提交阶段可临时由开发 CI 生成 Cargo.lock 产物，维护者校验提交后须恢复严格锁定。正式发布始终严格锁定。
 
-开发设计记录见 [docs](docs/)。
+开发设计记录见 [docs](docs/)。GLib 安全回移的来源、完整性与审计说明见 [GLib 回移记录](docs/v0.5.0-glib-backport.md)。
 
 发布前检查与剩余依赖风险见 [v0.4.0 验收记录](docs/v0.4.0-release-review.md)。
 

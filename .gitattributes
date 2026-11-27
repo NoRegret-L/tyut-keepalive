@@ -1,0 +1,2 @@
+# Preserve the verified upstream crate bytes on every platform.
+src-tauri/vendor/glib-0.18.5/** -text
