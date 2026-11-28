@@ -1,0 +1,40 @@
+# Package-scoped review policy; not final distribution approval.
+# Unknown or unreviewed third-party licenses must remain visible.
+[graph]
+targets = ["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]
+
+[licenses]
+allow = ["MIT","Apache-2.0","BSD-2-Clause","BSD-3-Clause","ISC","0BSD","Zlib","MIT-0","BSL-1.0","Unlicense","CC0-1.0"]
+unused-allowed-license = "allow"
+# Application approved in #8. The 25 additional entries match the actual
+# rejected packages in artifact 15198353949; both maintainers' conditional
+# approval was reported in chat. Distribution obligations remain #3 gates.
+exceptions = [
+    { crate = "tyut-keepalive@=0.5.0", allow = ["MPL-2.0"] },
+    { crate = "cssparser@=0.37.0", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros@=0.7.1", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short@=0.3.5", allow = ["MPL-2.0"] },
+    { crate = "icu_collections@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_locale_core@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_normalizer@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_normalizer_data@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties_data@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "icu_provider@=2.4.0", allow = ["Unicode-3.0"] },
+    { crate = "litemap@=0.8.3", allow = ["Unicode-3.0"] },
+    { crate = "option-ext@=0.2.0", allow = ["MPL-2.0"] },
+    { crate = "potential_utf@=0.1.6", allow = ["Unicode-3.0"] },
+    { crate = "selectors@=0.38.0", allow = ["MPL-2.0"] },
+    { crate = "target-lexicon@=0.12.16", allow = ["Apache-2.0 WITH LLVM-exception"] },
+    { crate = "tinystr@=0.8.5", allow = ["Unicode-3.0"] },
+    { crate = "unicode-ident@=1.0.27", allow = ["Unicode-3.0"] },
+    { crate = "writeable@=0.6.4", allow = ["Unicode-3.0"] },
+    { crate = "yoke@=0.8.4", allow = ["Unicode-3.0"] },
+    { crate = "yoke-derive@=0.8.4", allow = ["Unicode-3.0"] },
+    { crate = "zerofrom@=0.1.8", allow = ["Unicode-3.0"] },
+    { crate = "zerofrom-derive@=0.1.8", allow = ["Unicode-3.0"] },
+    { crate = "zerotrie@=0.2.5", allow = ["Unicode-3.0"] },
+    { crate = "zerovec@=0.11.9", allow = ["Unicode-3.0"] },
+    { crate = "zerovec-derive@=0.11.7", allow = ["Unicode-3.0"] },
+]
+# No global MPL/Unicode/LLVM allow, private ignore, or advisory suppression.

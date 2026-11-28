@@ -1,0 +1,16 @@
+THIRD-PARTY RUST LICENSE TEXTS — REVIEW CANDIDATE
+Not a distribution approval or an exhaustive installer notice.
+Includes build and development dependencies across the four supported targets.
+Application license, npm packages, native libraries and bundled assets require separate review.
+
+{{#each licenses}}
+======================================================================
+{{name}} ({{id}})
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}
