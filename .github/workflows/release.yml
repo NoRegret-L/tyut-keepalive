@@ -79,13 +79,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-15' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      # Reuse verified dependencies only; never save signed build outputs or tools.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: platform-release
+          cache-bin: false
+          save-if: false
 
       - uses: actions/setup-python@v5
         with:
