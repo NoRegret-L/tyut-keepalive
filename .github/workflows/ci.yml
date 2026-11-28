@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Superseded PR revisions need not consume runners. Main/push/manual runs stay independent.
+concurrency:
+  group: development-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     strategy:
