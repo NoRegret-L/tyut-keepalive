@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  unit:
     runs-on: ${{ inputs.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +28,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: platform-unit
+          cache-bin: false
       - name: Check frontend
         run: |
           npm run check:html
@@ -38,9 +40,38 @@ jobs:
           python scripts/check_glib_backport.py
           python scripts/test_release_checks.py
       - name: Resolve dependencies
-        run: cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked
+        run: cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked > cargo-metadata.json
       - name: Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Save resolved lockfile
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: src-tauri/Cargo.lock
+          if-no-files-found: error
+  release_checks:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: platform-release
+          cache-bin: false
       - name: GLib optimized iterator regression
         if: runner.os == 'Linux'
         run: cargo test --manifest-path src-tauri/Cargo.toml --release --locked --test glib_variant_str_iter
@@ -49,16 +80,22 @@ jobs:
         run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked --bin tyut-keepalive
       - name: Compile release configuration
         run: cargo check --manifest-path src-tauri/Cargo.toml --release --locked
-      - name: Save resolved lockfile
-        if: always() && runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+  audit:
+    if: startsWith(inputs.os, 'ubuntu-')
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: cargo-lock
-          path: src-tauri/Cargo.lock
-          if-no-files-found: error
-      - name: Install RustSec audit tool
-        if: runner.os == 'Linux'
-        run: cargo install cargo-audit --version 0.23.0 --locked
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install checksum-verified RustSec 0.23.0
+        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-audit@0.23.0
+      - name: Check exact RustSec tool version
+        run: test "$(cargo audit --version)" = "cargo-audit 0.23.0"
       - name: Audit resolved Cargo.lock (RustSec)
         if: runner.os == 'Linux'
         run: cargo audit --file src-tauri/Cargo.lock
@@ -67,3 +104,26 @@ jobs:
         run: |
           python scripts/check_glib_backport.py --audit-lock "$RUNNER_TEMP/glib-registry-audit.lock"
           cargo audit --file "$RUNNER_TEMP/glib-registry-audit.lock"
+  # Keep the original terminal check name for required status checks.
+  # Every applicable lane must succeed; skipped/cancelled/failing lanes fail closed.
+  test:
+    if: ${{ always() }}
+    needs: [unit, release_checks, audit]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require all applicable platform checks
+        env:
+          UNIT: ${{ needs.unit.result }}
+          RELEASE: ${{ needs.release_checks.result }}
+          AUDIT: ${{ needs.audit.result }}
+          PLATFORM: ${{ inputs.os }}
+        run: |
+          set -euo pipefail
+          test "$UNIT" = success
+          test "$RELEASE" = success
+          if [[ "$PLATFORM" == ubuntu-* ]]; then
+            test "$AUDIT" = success
+          else
+            test "$AUDIT" = skipped
+          fi
