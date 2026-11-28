@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: dependency-governance-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   graph-and-notices:
     runs-on: ubuntu-latest
@@ -20,8 +23,12 @@ jobs:
         run: python scripts/test_license_report.py
       - name: Collect locked four-target graphs and npm inventory
         run: python scripts/dependency_inventory.py --output "$RUNNER_TEMP/dependency-evidence"
-      - name: Install pinned cargo-about
-        run: cargo install cargo-about --version 0.9.3 --locked --features cli
+      - name: Install checksum-verified cargo-about 0.9.3
+        uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-about@0.9.3
+          checksum: true
+          fallback: none
       - name: Generate third-party notice candidate (strict harvesting)
         run: |
           set -euo pipefail
@@ -57,8 +64,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install pinned cargo-deny
-        run: cargo install cargo-deny --version 0.22.1 --locked
+      - name: Install checksum-verified cargo-deny 0.22.1
+        uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-deny@0.22.1
+          checksum: true
+          fallback: none
       - name: Evaluate exact-version SPDX policy (unapproved terms fail)
         run: |
           set -euo pipefail
