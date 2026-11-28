@@ -117,9 +117,11 @@ jobs:
           updaterJsonPreferNsis: false
           args: ${{ matrix.args }} -- --locked
 
-  publish:
+  validate_draft:
     needs: release
     runs-on: ubuntu-latest
+    # GitHub draft releases are visible only to identities with push access.
+    # This job reads draft assets and never publishes the release.
     permissions:
       contents: write
     steps:
@@ -133,12 +135,23 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = true
           gh release download "$TAG" --pattern latest.json --output "$RUNNER_TEMP/latest.json"
           gh release view "$TAG" --json assets --jq '.assets' > "$RUNNER_TEMP/release-assets.json"
           python scripts/check_update_manifest.py "$RUNNER_TEMP/latest.json" "$TAG" "$RUNNER_TEMP/release-assets.json"
-      - name: Publish only after all platform builds succeed
+      # Never publish on a tag push. Maintainers must accept the exact signed draft.
+      - name: Record manual release acceptance checklist
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --draft=false
+        run: |
+          {
+            echo "## Signed draft validated: $TAG"
+            echo "The release is still a draft. Do not publish until all acceptance checks pass."
+            echo "- [ ] Verify the three-platform CI and review dependency and license evidence."
+            echo "- [ ] Test the exact signed draft installers on Windows, macOS (Intel and Apple Silicon), and Linux."
+            echo "- [ ] Verify campus login, network recovery, sleep/wake, credential migration and removal."
+            echo "- [ ] Verify updater signatures and supported upgrade paths; review macOS signing/notarization."
+            echo "- [ ] Confirm the tag, commit and release assets are unchanged since validation."
+            echo "After acceptance, a maintainer may explicitly publish the draft from the Releases page."
+          } >> "$GITHUB_STEP_SUMMARY"
